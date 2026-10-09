@@ -6,17 +6,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Sanitasi otomatis URL Database agar bebas dari trailing slash atau format ganda
-let rawUrl = (process.env.TURSO_DATABASE_URL || '').trim();
-if (rawUrl.endsWith('/')) rawUrl = rawUrl.slice(0, -1);
+// Helper Inisialisasi Database Turso
+function getDb() {
+  let url = (process.env.TURSO_DATABASE_URL || '').trim().replace(/^["']|["']$/g, '');
+  let authToken = (process.env.TURSO_AUTH_TOKEN || '').trim().replace(/^["']|["']$/g, '');
 
-const db = createClient({
-  url: rawUrl,
-  authToken: (process.env.TURSO_AUTH_TOKEN || '').trim(),
-});
+  if (!url || !authToken) {
+    throw new Error('TURSO_DATABASE_URL atau TURSO_AUTH_TOKEN belum diatur di Vercel.');
+  }
 
-// Helper Function: Membuat Struktur Tabel di Turso
-async function createTables() {
+  if (url.startsWith('https://')) {
+    url = url.replace('https://', 'libsql://');
+  } else if (!url.startsWith('libsql://')) {
+    url = 'libsql://' + url;
+  }
+
+  return createClient({ url, authToken });
+}
+
+// Helper Buat Tabel Database
+async function createTables(db) {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,13 +62,12 @@ async function createTables() {
   `);
 }
 
-// ENDPOINT GENERATOR DUMMY DATA + MIGRATION (Dipanggil via /api/seed)
+// ENDPOINT SEED (/api/seed)
 app.get('/api/seed', async (req, res) => {
   try {
-    // 1. Buat Tabel jika belum ada
-    await createTables();
+    const db = getDb();
+    await createTables(db);
 
-    // 2. Isi Data Produk Dummy dengan Foto
     await db.execute(`DELETE FROM inventory`);
     const dummyProducts = [
       ['Royal Canin Adult Cat 2kg', 'Makanan Kucing', 285000, 18, 5, 'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=300'],
@@ -75,7 +83,6 @@ app.get('/api/seed', async (req, res) => {
       });
     }
 
-    // 3. Isi Data Bookings Dummy
     await db.execute(`DELETE FROM bookings`);
     const dummyBookings = [
       ['Budi Santoso', 'Milo', 'Kucing', 'Full Grooming', '2026-10-10', '09:00'],
@@ -89,29 +96,29 @@ app.get('/api/seed', async (req, res) => {
       });
     }
 
-    // 4. Isi Data Anabul Dummy
     await db.execute(`DELETE FROM pets`);
     const dummyPets = [
-      ['Milo', 'Kucing', 'Persian Longhair', 'Budi Santoso', '08123456789'],
-      ['Rocky', 'Anjing', 'Poodle', 'Siti Rahma', '08987654321'],
-      ['Mochi', 'Kucing', 'Domestic Shorthair', 'Dewi Lestari', '08556677889']
+      ['Milo', 'Kucing', 'Persian Longhair', 'Budi Santoso', '08123456789', '-'],
+      ['Rocky', 'Anjing', 'Poodle', 'Siti Rahma', '08987654321', '-'],
+      ['Mochi', 'Kucing', 'Domestic Shorthair', 'Dewi Lestari', '08556677889', '-']
     ];
     for (const pt of dummyPets) {
       await db.execute({
-        sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, '-')`,
+        sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, ?)`,
         args: pt
       });
     }
 
-    res.json({ success: true, message: 'Tabel dan data dummy berhasil diisikan ke Turso!' });
+    res.json({ success: true, message: 'Data dummy berhasil disimpan!' });
   } catch (err) {
-    res.status(500).json({ error: 'Seed error: ' + err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// API Routes
+// GET ROUTES
 app.get('/api/kpi', async (req, res) => {
   try {
+    const db = getDb();
     const bookings = await db.execute("SELECT COUNT(*) as total FROM bookings");
     const lowStock = await db.execute("SELECT COUNT(*) as total FROM inventory WHERE stock <= min_stock");
     res.json({
@@ -125,6 +132,7 @@ app.get('/api/kpi', async (req, res) => {
 
 app.get('/api/bookings', async (req, res) => {
   try {
+    const db = getDb();
     const result = await db.execute("SELECT * FROM bookings ORDER BY id DESC");
     res.json(result.rows);
   } catch (err) {
@@ -132,22 +140,9 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-app.post('/api/bookings', async (req, res) => {
-  try {
-    await createTables();
-    const { customer_name, pet_name, pet_type, service_type, booking_date, booking_time } = req.body;
-    await db.execute({
-      sql: `INSERT INTO bookings (customer_name, pet_name, pet_type, service_type, booking_date, booking_time) VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [customer_name, pet_name, pet_type, service_type, booking_date, booking_time]
-    });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.get('/api/inventory', async (req, res) => {
   try {
+    const db = getDb();
     const result = await db.execute("SELECT * FROM inventory ORDER BY name ASC");
     res.json(result.rows);
   } catch (err) {
@@ -155,22 +150,9 @@ app.get('/api/inventory', async (req, res) => {
   }
 });
 
-app.post('/api/inventory', async (req, res) => {
-  try {
-    await createTables();
-    const { name, category, price, stock, min_stock, image_url } = req.body;
-    await db.execute({
-      sql: `INSERT INTO inventory (name, category, price, stock, min_stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [name, category, price, stock, min_stock || 5, image_url || 'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=300']
-    });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.get('/api/pets', async (req, res) => {
   try {
+    const db = getDb();
     const result = await db.execute("SELECT * FROM pets ORDER BY id DESC");
     res.json(result.rows);
   } catch (err) {
@@ -178,13 +160,66 @@ app.get('/api/pets', async (req, res) => {
   }
 });
 
+// POST ROUTES (Dengan Sanitasi Argumen Bebas Undefined)
+app.post('/api/bookings', async (req, res) => {
+  try {
+    const db = getDb();
+    await createTables(db);
+    const { customer_name, pet_name, pet_type, service_type, booking_date, booking_time } = req.body;
+    await db.execute({
+      sql: `INSERT INTO bookings (customer_name, pet_name, pet_type, service_type, booking_date, booking_time) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        customer_name || 'Pemilik',
+        pet_name || 'Anabul',
+        pet_type || 'Kucing',
+        service_type || 'Full Grooming',
+        booking_date || '-',
+        booking_time || '-'
+      ]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/inventory', async (req, res) => {
+  try {
+    const db = getDb();
+    await createTables(db);
+    const { name, category, price, stock, min_stock, image_url } = req.body;
+    await db.execute({
+      sql: `INSERT INTO inventory (name, category, price, stock, min_stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        name || 'Produk Baru',
+        category || 'Umum',
+        Number(price) || 0,
+        Number(stock) || 0,
+        Number(min_stock) || 5,
+        image_url || 'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=300'
+      ]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/pets', async (req, res) => {
   try {
-    await createTables();
+    const db = getDb();
+    await createTables(db);
     const { name, type, breed, owner_name, owner_phone } = req.body;
     await db.execute({
-      sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, '-')`,
-      args: [name, type, breed, owner_name, owner_phone]
+      sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        name || 'Anabul',
+        type || 'Kucing',
+        breed || '-',
+        owner_name || 'Pemilik',
+        owner_phone || '-',
+        '-'
+      ]
     });
     res.json({ success: true });
   } catch (err) {
