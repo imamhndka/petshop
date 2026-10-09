@@ -6,13 +6,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Helper Inisialisasi Database Turso
+// Helper Inisialisasi Kunci Turso
 function getDb() {
   let url = (process.env.TURSO_DATABASE_URL || '').trim().replace(/^["']|["']$/g, '');
   let authToken = (process.env.TURSO_AUTH_TOKEN || '').trim().replace(/^["']|["']$/g, '');
 
   if (!url || !authToken) {
-    throw new Error('TURSO_DATABASE_URL atau TURSO_AUTH_TOKEN belum diatur di Vercel.');
+    throw new Error('TURSO_DATABASE_URL atau TURSO_AUTH_TOKEN belum diisi di Vercel.');
   }
 
   if (url.startsWith('https://')) {
@@ -24,8 +24,8 @@ function getDb() {
   return createClient({ url, authToken });
 }
 
-// Helper Buat Tabel Database
-async function createTables(db) {
+// Otomatis Buat Tabel Jika Belum Ada
+async function ensureTables(db) {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,11 +62,11 @@ async function createTables(db) {
   `);
 }
 
-// ENDPOINT SEED (/api/seed)
+// ENDPOINT DUMMY DATA SEED (/api/seed)
 app.get('/api/seed', async (req, res) => {
   try {
     const db = getDb();
-    await createTables(db);
+    await ensureTables(db);
 
     await db.execute(`DELETE FROM inventory`);
     const dummyProducts = [
@@ -109,16 +109,17 @@ app.get('/api/seed', async (req, res) => {
       });
     }
 
-    res.json({ success: true, message: 'Data dummy berhasil disimpan!' });
+    res.json({ success: true, message: 'Data dummy berhasil dimasukkan ke Turso!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET ROUTES
+// GET ROUTES (Aman Tanpa Error 500)
 app.get('/api/kpi', async (req, res) => {
   try {
     const db = getDb();
+    await ensureTables(db);
     const bookings = await db.execute("SELECT COUNT(*) as total FROM bookings");
     const lowStock = await db.execute("SELECT COUNT(*) as total FROM inventory WHERE stock <= min_stock");
     res.json({
@@ -126,13 +127,14 @@ app.get('/api/kpi', async (req, res) => {
       lowStock: Number(lowStock.rows[0]?.total || 0)
     });
   } catch (err) {
-    res.json({ todayBookings: 0, lowStock: 0 });
+    res.json({ todayBookings: 0, lowStock: 0, error: err.message });
   }
 });
 
 app.get('/api/bookings', async (req, res) => {
   try {
     const db = getDb();
+    await ensureTables(db);
     const result = await db.execute("SELECT * FROM bookings ORDER BY id DESC");
     res.json(result.rows);
   } catch (err) {
@@ -143,6 +145,7 @@ app.get('/api/bookings', async (req, res) => {
 app.get('/api/inventory', async (req, res) => {
   try {
     const db = getDb();
+    await ensureTables(db);
     const result = await db.execute("SELECT * FROM inventory ORDER BY name ASC");
     res.json(result.rows);
   } catch (err) {
@@ -153,6 +156,7 @@ app.get('/api/inventory', async (req, res) => {
 app.get('/api/pets', async (req, res) => {
   try {
     const db = getDb();
+    await ensureTables(db);
     const result = await db.execute("SELECT * FROM pets ORDER BY id DESC");
     res.json(result.rows);
   } catch (err) {
@@ -160,11 +164,11 @@ app.get('/api/pets', async (req, res) => {
   }
 });
 
-// POST ROUTES (Dengan Sanitasi Argumen Bebas Undefined)
+// POST ROUTES (Input Data)
 app.post('/api/bookings', async (req, res) => {
   try {
     const db = getDb();
-    await createTables(db);
+    await ensureTables(db);
     const { customer_name, pet_name, pet_type, service_type, booking_date, booking_time } = req.body;
     await db.execute({
       sql: `INSERT INTO bookings (customer_name, pet_name, pet_type, service_type, booking_date, booking_time) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -186,7 +190,7 @@ app.post('/api/bookings', async (req, res) => {
 app.post('/api/inventory', async (req, res) => {
   try {
     const db = getDb();
-    await createTables(db);
+    await ensureTables(db);
     const { name, category, price, stock, min_stock, image_url } = req.body;
     await db.execute({
       sql: `INSERT INTO inventory (name, category, price, stock, min_stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -208,7 +212,7 @@ app.post('/api/inventory', async (req, res) => {
 app.post('/api/pets', async (req, res) => {
   try {
     const db = getDb();
-    await createTables(db);
+    await ensureTables(db);
     const { name, type, breed, owner_name, owner_phone } = req.body;
     await db.execute({
       sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, ?)`,
