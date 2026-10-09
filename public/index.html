@@ -30,7 +30,7 @@
         .badge { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
         .badge-pending { background: #fef3c7; color: #92400e; }
         .badge-success { background: #dcfce7; color: #166534; }
-        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
         .modal-body { background: #fff; padding: 25px; border-radius: 12px; width: 400px; }
         .input-group { margin-bottom: 15px; }
         .input-group label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #475569; }
@@ -128,7 +128,7 @@
         </div>
     </div>
 
-    <!-- MODAL BOOKING -->
+    <!-- MODAL 1: BOOKING -->
     <div id="modal-booking" class="modal">
         <div class="modal-body">
             <h3>Tambah Booking Layanan</h3>
@@ -140,6 +140,35 @@
                 <div class="input-group"><label>Tanggal</label><input type="date" id="b-date" required></div>
                 <div class="input-group"><label>Jam</label><input type="time" id="b-time" required></div>
                 <button type="submit" class="btn" style="width:100%;">Simpan Booking</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: INVENTORY -->
+    <div id="modal-inventory" class="modal">
+        <div class="modal-body">
+            <h3>Tambah Produk Baru</h3>
+            <form onsubmit="submitInventory(event)">
+                <div class="input-group"><label>Nama Produk</label><input type="text" id="i-name" required></div>
+                <div class="input-group"><label>Kategori</label><select id="i-category"><option>Makanan Kucing</option><option>Makanan Anjing</option><option>Obat & Vaksin</option><option>Aksesori</option></select></div>
+                <div class="input-group"><label>Harga (Rp)</label><input type="number" id="i-price" required></div>
+                <div class="input-group"><label>Stok Awal</label><input type="number" id="i-stock" required></div>
+                <button type="submit" class="btn" style="width:100%;">Simpan Produk</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 3: PET -->
+    <div id="modal-pet" class="modal">
+        <div class="modal-body">
+            <h3>Tambah Anabul Baru</h3>
+            <form onsubmit="submitPet(event)">
+                <div class="input-group"><label>Nama Anabul</label><input type="text" id="p-name" required></div>
+                <div class="input-group"><label>Jenis Hewan</label><select id="p-type"><option>Kucing</option><option>Anjing</option><option>Lainnya</option></select></div>
+                <div class="input-group"><label>Ras</label><input type="text" id="p-breed" placeholder="misal: Persian / Poodle"></div>
+                <div class="input-group"><label>Nama Pemilik</label><input type="text" id="p-owner" required></div>
+                <div class="input-group"><label>No. HP Pemilik</label><input type="text" id="p-phone" required></div>
+                <button type="submit" class="btn" style="width:100%;">Simpan Anabul</button>
             </form>
         </div>
     </div>
@@ -191,7 +220,7 @@
                 const tbody = document.getElementById('pets-tbody');
                 tbody.innerHTML = '';
                 data.forEach(p => {
-                    tbody.innerHTML += `<tr><td><b>${p.name}</b></td><td>${p.type}</td><td>${p.owner_name}</td><td>${p.owner_phone}</td></tr>`;
+                    tbody.innerHTML += `<tr><td><b>${p.name}</b></td><td>${p.type} (${p.breed || '-'})</td><td>${p.owner_name}</td><td>${p.owner_phone}</td></tr>`;
                 });
             } catch(e){}
         }
@@ -203,8 +232,14 @@
             el.classList.add('active');
         }
 
-        function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-        window.onclick = (e) => { if (e.target.classList.contains('modal')) e.target.style.display = 'none'; };
+        function openModal(id) { 
+            const el = document.getElementById(id);
+            if(el) el.style.display = 'flex'; 
+        }
+
+        window.onclick = (e) => { 
+            if (e.target.classList.contains('modal')) e.target.style.display = 'none'; 
+        };
 
         async function submitBooking(e) {
             e.preventDefault();
@@ -222,7 +257,46 @@
                 body: JSON.stringify(payload)
             });
             document.getElementById('modal-booking').style.display = 'none';
+            e.target.reset();
             loadKPI(); loadBookings();
+        }
+
+        async function submitInventory(e) {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('i-name').value,
+                category: document.getElementById('i-category').value,
+                price: Number(document.getElementById('i-price').value),
+                stock: Number(document.getElementById('i-stock').value)
+            };
+            await fetch(`${API}/inventory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('modal-inventory').style.display = 'none';
+            e.target.reset();
+            loadKPI(); loadInventory();
+        }
+
+        async function submitPet(e) {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('p-name').value,
+                type: document.getElementById('p-type').value,
+                breed: document.getElementById('p-breed').value,
+                owner_name: document.getElementById('p-owner').value,
+                owner_phone: document.getElementById('p-phone').value,
+                medical_history: '-'
+            };
+            await fetch(`${API}/pets`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('modal-pet').style.display = 'none';
+            e.target.reset();
+            loadPets();
         }
 
         loadKPI(); loadBookings(); loadInventory(); loadPets();
