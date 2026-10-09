@@ -16,6 +16,7 @@
         header { background: #fff; padding: 16px 30px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
         .btn { background: #f59e0b; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .btn:hover { background: #d97706; }
+        .btn-outline { background: transparent; border: 1px solid #cbd5e1; color: #475569; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
         .content { padding: 30px; }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
@@ -23,16 +24,29 @@
         .kpi-card { background: #fff; padding: 22px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .kpi-title { font-size: 0.85rem; color: #64748b; margin-bottom: 6px; }
         .kpi-value { font-size: 1.6rem; font-weight: bold; color: #0f172a; }
-        .card { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .card { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; text-align: left; }
         th { background: #f8fafc; padding: 12px; font-size: 0.85rem; color: #64748b; border-bottom: 2px solid #e2e8f0; }
         td { padding: 14px 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; vertical-align: middle; }
-        .prod-img { width: 48px; h-height: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .prod-img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; }
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
-        .modal-body { background: #fff; padding: 25px; border-radius: 12px; width: 400px; }
+        .modal-body { background: #fff; padding: 25px; border-radius: 12px; width: 420px; max-height: 90vh; overflow-y: auto; }
         .input-group { margin-bottom: 15px; }
         .input-group label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #475569; }
         .input-group input, .input-group select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        
+        /* CALENDAR STYLES */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 15px; }
+        .cal-day-head { font-weight: bold; text-align: center; font-size: 0.85rem; color: #64748b; padding: 8px 0; background: #f8fafc; border-radius: 6px; }
+        .cal-cell { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; min-height: 90px; padding: 8px; font-size: 0.85rem; position: relative; }
+        .cal-cell.today { border: 2px solid #f59e0b; background: #fffbebfb; }
+        .cal-cell.holiday { background: #fef2f2; border-color: #fca5a5; }
+        .cal-date { font-weight: bold; color: #0f172a; margin-bottom: 4px; }
+        .cal-tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-bottom: 3px; font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tag-grooming { background: #dbeafe; color: #1e40af; }
+        .tag-doctor { background: #fce7f3; color: #9d174d; }
+        .tag-hotel { background: #dcfce7; color: #166534; }
+        .tag-holiday { background: #fee2e2; color: #991b1b; }
     </style>
 </head>
 <body>
@@ -41,6 +55,7 @@
             <div class="logo">🐾 Petshop Admin</div>
             <ul class="nav-list">
                 <li class="nav-item active" onclick="switchTab('dashboard', this)">Dashboard Overview</li>
+                <li class="nav-item" onclick="switchTab('calendar', this)">Kalender & Operasional</li>
                 <li class="nav-item" onclick="switchTab('bookings', this)">Booking & Grooming</li>
                 <li class="nav-item" onclick="switchTab('inventory', this)">Stok Produk</li>
                 <li class="nav-item" onclick="switchTab('pets', this)">Database Anabul</li>
@@ -51,7 +66,7 @@
     <div class="main">
         <header>
             <h2 id="page-heading">Dashboard Overview</h2>
-            <button class="btn" onclick="openModal('modal-booking')">+ Tambah Booking Baru</button>
+            <button class="btn" onclick="openModal('modal-booking')">+ Tambah Reservasi Baru</button>
         </header>
 
         <div class="content">
@@ -59,7 +74,7 @@
             <div id="tab-dashboard" class="tab-panel active">
                 <div class="grid">
                     <div class="kpi-card">
-                        <div class="kpi-title">Booking Disimpan</div>
+                        <div class="kpi-title">Total Reservasi</div>
                         <div class="kpi-value" id="kpi-bookings">0</div>
                     </div>
                     <div class="kpi-card">
@@ -79,10 +94,58 @@
                 </div>
             </div>
 
-            <!-- TAB 2: BOOKINGS -->
+            <!-- TAB 2: KALENDER & OPERASIONAL -->
+            <div id="tab-calendar" class="tab-panel">
+                <div class="grid" style="grid-template-columns: 2fr 1fr;">
+                    <!-- Card Jam Operasional Toko -->
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                            <h3>Jam Buka / Tutup Toko Harian</h3>
+                            <button class="btn-outline" onclick="openModal('modal-holiday')">+ Tambah Hari Libur Toko</button>
+                        </div>
+                        <table style="margin-top:0;">
+                            <thead>
+                                <tr><th>Hari</th><th>Jam Buka</th><th>Jam Tutup</th><th>Status Toko</th><th>Aksi</th></tr>
+                            </thead>
+                            <tbody id="store-hours-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Ringkasan Kalender Medis & Grooming -->
+                    <div class="card">
+                        <h3>Legenda & Filter Layanan</h3>
+                        <div style="margin-top:15px; space-y-2;">
+                            <p style="font-size:0.85rem; margin-bottom:8px;"><span style="display:inline-block; width:12px; height:12px; background:#dbeafe; border-radius:3px; margin-right:6px;"></span> <b>Grooming Anabul</b></p>
+                            <p style="font-size:0.85rem; margin-bottom:8px;"><span style="display:inline-block; width:12px; height:12px; background:#fce7f3; border-radius:3px; margin-right:6px;"></span> <b>Dokter Hewan / Medis</b></p>
+                            <p style="font-size:0.85rem; margin-bottom:8px;"><span style="display:inline-block; width:12px; height:12px; background:#dcfce7; border-radius:3px; margin-right:6px;"></span> <b>Penitipan Hotel</b></p>
+                            <p style="font-size:0.85rem; margin-bottom:8px;"><span style="display:inline-block; width:12px; height:12px; background:#fee2e2; border-radius:3px; margin-right:6px;"></span> <b>Toko Libur / Tutup</b></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualiasi Kalender Bulanan -->
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 id="cal-month-title">Kalender Reservasi Bulan Ini</h3>
+                        <button class="btn" onclick="openModal('modal-booking')">+ Tambah Janji Temu</button>
+                    </div>
+                    <div class="calendar-grid">
+                        <div class="cal-day-head">Minggu</div>
+                        <div class="cal-day-head">Senin</div>
+                        <div class="cal-day-head">Selasa</div>
+                        <div class="cal-day-head">Rabu</div>
+                        <div class="cal-day-head">Kamis</div>
+                        <div class="cal-day-head">Jumat</div>
+                        <div class="cal-day-head">Sabtu</div>
+                    </div>
+                    <div class="calendar-grid" id="calendar-days-grid"></div>
+                </div>
+            </div>
+
+            <!-- TAB 3: BOOKINGS -->
             <div id="tab-bookings" class="tab-panel">
                 <div class="card">
-                    <h3>Semua Daftar Booking</h3>
+                    <h3>Semua Daftar Booking Layanan</h3>
                     <table>
                         <thead>
                             <tr><th>Pemilik</th><th>Anabul</th><th>Jenis</th><th>Layanan</th><th>Waktu</th></tr>
@@ -92,7 +155,7 @@
                 </div>
             </div>
 
-            <!-- TAB 3: INVENTORY -->
+            <!-- TAB 4: INVENTORY -->
             <div id="tab-inventory" class="tab-panel">
                 <div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -108,7 +171,7 @@
                 </div>
             </div>
 
-            <!-- TAB 4: PETS -->
+            <!-- TAB 5: PETS -->
             <div id="tab-pets" class="tab-panel">
                 <div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -126,23 +189,32 @@
         </div>
     </div>
 
-    <!-- MODAL BOOKING -->
+    <!-- MODAL 1: BOOKING & DOKTER HEWAN -->
     <div id="modal-booking" class="modal">
         <div class="modal-body">
-            <h3>Tambah Booking Layanan</h3>
+            <h3>Tambah Reservasi & Janji Temu</h3>
             <form onsubmit="submitBooking(event)">
                 <div class="input-group"><label>Nama Pemilik</label><input type="text" id="b-owner" required></div>
                 <div class="input-group"><label>Nama Anabul</label><input type="text" id="b-pet" required></div>
-                <div class="input-group"><label>Jenis Hewan</label><select id="b-type"><option>Kucing</option><option>Anjing</option></select></div>
-                <div class="input-group"><label>Layanan</label><select id="b-service"><option>Full Grooming</option><option>Penitipan Hotel</option></select></div>
-                <div class="input-group"><label>Tanggal</label><input type="date" id="b-date" required></div>
-                <div class="input-group"><label>Jam</label><input type="time" id="b-time" required></div>
-                <button type="submit" class="btn" style="width:100%;">Simpan Booking</button>
+                <div class="input-group"><label>Jenis Hewan</label><select id="b-type"><option>Kucing</option><option>Anjing</option><option>Lainnya</option></select></div>
+                <div class="input-group">
+                    <label>Jenis Layanan</label>
+                    <select id="b-service">
+                        <option>Full Grooming</option>
+                        <option>Grooming Anti Kutu/Jamur</option>
+                        <option>Konsultasi Dokter Hewan</option>
+                        <option>Vaksinasi & Check-up Medis</option>
+                        <option>Penitipan Hotel Anabul</option>
+                    </select>
+                </div>
+                <div class="input-group"><label>Tanggal Reservasi</label><input type="date" id="b-date" required></div>
+                <div class="input-group"><label>Jam Reservasi</label><input type="time" id="b-time" required></div>
+                <button type="submit" class="btn" style="width:100%;">Simpan Reservasi</button>
             </form>
         </div>
     </div>
 
-    <!-- MODAL INVENTORY -->
+    <!-- MODAL 2: INVENTORY -->
     <div id="modal-inventory" class="modal">
         <div class="modal-body">
             <h3>Tambah Produk Baru</h3>
@@ -157,14 +229,14 @@
         </div>
     </div>
 
-    <!-- MODAL PET -->
+    <!-- MODAL 3: PET -->
     <div id="modal-pet" class="modal">
         <div class="modal-body">
             <h3>Tambah Anabul Baru</h3>
             <form onsubmit="submitPet(event)">
                 <div class="input-group"><label>Nama Anabul</label><input type="text" id="p-name" required></div>
-                <div class="input-group"><label>Jenis Hewan</label><select id="p-type"><option>Kucing</option><option>Anjing</option></select></div>
-                <div class="input-group"><label>Ras</label><input type="text" id="p-breed"></div>
+                <div class="input-group"><label>Jenis Hewan</label><select id="p-type"><option>Kucing</option><option>Anjing</option><option>Lainnya</option></select></div>
+                <div class="input-group"><label>Ras</label><input type="text" id="p-breed" placeholder="misal: Persian / Poodle"></div>
                 <div class="input-group"><label>Nama Pemilik</label><input type="text" id="p-owner" required></div>
                 <div class="input-group"><label>No. HP Pemilik</label><input type="text" id="p-phone" required></div>
                 <button type="submit" class="btn" style="width:100%;">Simpan Anabul</button>
@@ -172,8 +244,37 @@
         </div>
     </div>
 
+    <!-- MODAL 4: LIBUR TOKO -->
+    <div id="modal-holiday" class="modal">
+        <div class="modal-body">
+            <h3>Tambah Hari Libur Toko</h3>
+            <form onsubmit="submitHoliday(event)">
+                <div class="input-group"><label>Tanggal Libur</label><input type="date" id="h-date" required></div>
+                <div class="input-group"><label>Keterangan Libur</label><input type="text" id="h-desc" placeholder="misal: Libur Hari Raya" required></div>
+                <button type="submit" class="btn" style="width:100%;">Tandai Hari Libur</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 5: EDIT JAM OPERASIONAL -->
+    <div id="modal-edit-hours" class="modal">
+        <div class="modal-body">
+            <h3>Edit Jam Buka / Tutup</h3>
+            <form onsubmit="submitEditHours(event)">
+                <input type="hidden" id="eh-day">
+                <div class="input-group"><label id="eh-day-label">Hari</label></div>
+                <div class="input-group"><label>Jam Buka</label><input type="time" id="eh-open" required></div>
+                <div class="input-group"><label>Jam Tutup</label><input type="time" id="eh-close" required></div>
+                <div class="input-group"><label>Status Buka</label><select id="eh-status"><option value="0">Buka Normal</option><option value="1">Tutup Seharian</option></select></div>
+                <button type="submit" class="btn" style="width:100%;">Simpan Jam Operasional</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API = '/api';
+        let allBookings = [];
+        let storeHolidays = [];
 
         async function loadKPI() {
             try {
@@ -184,18 +285,96 @@
             } catch(e){}
         }
 
+        async function loadStoreHours() {
+            try {
+                const res = await fetch(`${API}/store-hours`);
+                const data = await res.json();
+                storeHolidays = data.holidays || [];
+                const tbody = document.getElementById('store-hours-tbody');
+                tbody.innerHTML = '';
+
+                (data.hours || []).forEach(h => {
+                    const statusBadge = h.is_closed ? '<span style="color:#e11d48; font-weight:bold;">Tutup</span>' : '<span style="color:#166534; font-weight:bold;">Buka</span>';
+                    tbody.innerHTML += `<tr>
+                        <td><b>${h.day_name}</b></td>
+                        <td>${h.open_time} WIB</td>
+                        <td>${h.close_time} WIB</td>
+                        <td>${statusBadge}</td>
+                        <td><button class="btn-outline" onclick="openEditHours('${h.day_name}', '${h.open_time}', '${h.close_time}', ${h.is_closed})">Edit</button></td>
+                    </tr>`;
+                });
+
+                renderCalendar();
+            } catch(e){}
+        }
+
         async function loadBookings() {
             try {
                 const res = await fetch(`${API}/bookings`);
                 const data = await res.json();
+                allBookings = data;
+
                 const dashBody = document.getElementById('dashboard-bookings-tbody');
                 const bookBody = document.getElementById('bookings-tbody');
                 dashBody.innerHTML = ''; bookBody.innerHTML = '';
+
                 data.forEach(b => {
                     dashBody.innerHTML += `<tr><td><b>${b.customer_name}</b></td><td>${b.pet_name}</td><td>${b.service_type}</td><td>${b.booking_date} ${b.booking_time}</td></tr>`;
                     bookBody.innerHTML += `<tr><td><b>${b.customer_name}</b></td><td>${b.pet_name}</td><td>${b.pet_type}</td><td>${b.service_type}</td><td>${b.booking_date} ${b.booking_time}</td></tr>`;
                 });
+
+                renderCalendar();
             } catch(e){}
+        }
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendar-days-grid');
+            if(!grid) return;
+            grid.innerHTML = '';
+
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+
+            const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            document.getElementById('cal-month-title').innerText = `Kalender Reservasi - ${monthNames[month]} ${year}`;
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            // Offset awal bulan
+            for(let i = 0; i < firstDay; i++) {
+                grid.innerHTML += `<div class="cal-cell" style="background:#f8fafc;"></div>`;
+            }
+
+            // Render tanggal
+            for(let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isToday = day === now.getDate();
+                const isHoliday = storeHolidays.find(h => h.holiday_date === dateStr);
+
+                let cellClass = `cal-cell ${isToday ? 'today' : ''} ${isHoliday ? 'holiday' : ''}`;
+                let tagsHTML = '';
+
+                if(isHoliday) {
+                    tagsHTML += `<span class="cal-tag tag-holiday">⛔ ${isHoliday.description}</span>`;
+                }
+
+                // Filter reservasi tanggal ini
+                const dayBookings = allBookings.filter(b => b.booking_date === dateStr);
+                dayBookings.forEach(b => {
+                    let tagClass = 'tag-grooming';
+                    if(b.service_type.includes('Dokter') || b.service_type.includes('Vaksin')) tagClass = 'tag-doctor';
+                    if(b.service_type.includes('Penitipan')) tagClass = 'tag-hotel';
+
+                    tagsHTML += `<span class="cal-tag ${tagClass}">${b.booking_time} - ${b.pet_name} (${b.service_type})</span>`;
+                });
+
+                grid.innerHTML += `<div class="${cellClass}">
+                    <div class="cal-date">${day}</div>
+                    ${tagsHTML}
+                </div>`;
+            }
         }
 
         async function loadInventory() {
@@ -245,6 +424,48 @@
             if (e.target.classList.contains('modal')) e.target.style.display = 'none'; 
         };
 
+        function openEditHours(day, openTime, closeTime, status) {
+            document.getElementById('eh-day').value = day;
+            document.getElementById('eh-day-label').innerText = `Hari: ${day}`;
+            document.getElementById('eh-open').value = openTime;
+            document.getElementById('eh-close').value = closeTime;
+            document.getElementById('eh-status').value = status;
+            openModal('modal-edit-hours');
+        }
+
+        async function submitEditHours(e) {
+            e.preventDefault();
+            const payload = {
+                day_name: document.getElementById('eh-day').value,
+                open_time: document.getElementById('eh-open').value,
+                close_time: document.getElementById('eh-close').value,
+                is_closed: Number(document.getElementById('eh-status').value)
+            };
+            await fetch(`${API}/store-hours`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('modal-edit-hours').style.display = 'none';
+            loadStoreHours();
+        }
+
+        async function submitHoliday(e) {
+            e.preventDefault();
+            const payload = {
+                holiday_date: document.getElementById('h-date').value,
+                description: document.getElementById('h-desc').value
+            };
+            await fetch(`${API}/store-holidays`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('modal-holiday').style.display = 'none';
+            e.target.reset();
+            loadStoreHours();
+        }
+
         async function submitBooking(e) {
             e.preventDefault();
             const payload = {
@@ -285,38 +506,25 @@
         }
 
         async function submitPet(e) {
-    e.preventDefault();
-    const payload = {
-        name: document.getElementById('p-name').value,
-        type: document.getElementById('p-type').value,
-        breed: document.getElementById('p-breed').value,
-        owner_name: document.getElementById('p-owner').value,
-        owner_phone: document.getElementById('p-phone').value
-    };
-    
-    try {
-        const res = await fetch(`${API}/pets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        
-        if (!res.ok) {
-            alert('Gagal menyimpan: ' + (data.error || 'Terjadi kesalahan pada server'));
-            return;
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('p-name').value,
+                type: document.getElementById('p-type').value,
+                breed: document.getElementById('p-breed').value,
+                owner_name: document.getElementById('p-owner').value,
+                owner_phone: document.getElementById('p-phone').value
+            };
+            await fetch(`${API}/pets`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('modal-pet').style.display = 'none';
+            e.target.reset();
+            loadPets();
         }
 
-        document.getElementById('modal-pet').style.display = 'none';
-        e.target.reset();
-        loadPets();
-        alert('Data Anabul berhasil disimpan!');
-    } catch (err) {
-        alert('Gagal terhubung ke server: ' + err.message);
-    }
-}
-
-        loadKPI(); loadBookings(); loadInventory(); loadPets();
+        loadKPI(); loadStoreHours(); loadBookings(); loadInventory(); loadPets();
     </script>
 </body>
 </html>
