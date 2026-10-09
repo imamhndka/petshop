@@ -6,14 +6,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Sanitasi otomatis URL Database agar bebas dari trailing slash atau format ganda
+let rawUrl = (process.env.TURSO_DATABASE_URL || '').trim();
+if (rawUrl.endsWith('/')) rawUrl = rawUrl.slice(0, -1);
+
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: rawUrl,
+  authToken: (process.env.TURSO_AUTH_TOKEN || '').trim(),
 });
 
-let isMigrated = false;
-async function initDb() {
-  if (isMigrated) return;
+// Helper Function: Membuat Struktur Tabel di Turso
+async function createTables() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,22 +51,15 @@ async function initDb() {
       medical_history TEXT
     );
   `);
-  isMigrated = true;
 }
 
-app.use(async (req, res, next) => {
-  try {
-    await initDb();
-    next();
-  } catch (err) {
-    res.status(500).json({ error: 'Database error: ' + err.message });
-  }
-});
-
-// GENERATOR DATA DUMMY (Cukup buka URL /api/seed di browser)
+// ENDPOINT GENERATOR DUMMY DATA + MIGRATION (Dipanggil via /api/seed)
 app.get('/api/seed', async (req, res) => {
   try {
-    // 1. Seed Inventory dengan Foto
+    // 1. Buat Tabel jika belum ada
+    await createTables();
+
+    // 2. Isi Data Produk Dummy dengan Foto
     await db.execute(`DELETE FROM inventory`);
     const dummyProducts = [
       ['Royal Canin Adult Cat 2kg', 'Makanan Kucing', 285000, 18, 5, 'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=300'],
@@ -79,7 +75,7 @@ app.get('/api/seed', async (req, res) => {
       });
     }
 
-    // 2. Seed Bookings
+    // 3. Isi Data Bookings Dummy
     await db.execute(`DELETE FROM bookings`);
     const dummyBookings = [
       ['Budi Santoso', 'Milo', 'Kucing', 'Full Grooming', '2026-10-10', '09:00'],
@@ -93,7 +89,7 @@ app.get('/api/seed', async (req, res) => {
       });
     }
 
-    // 3. Seed Pets
+    // 4. Isi Data Anabul Dummy
     await db.execute(`DELETE FROM pets`);
     const dummyPets = [
       ['Milo', 'Kucing', 'Persian Longhair', 'Budi Santoso', '08123456789'],
@@ -107,62 +103,93 @@ app.get('/api/seed', async (req, res) => {
       });
     }
 
-    res.json({ success: true, message: 'Data dummy berhasil dimasukkan ke Turso!' });
+    res.json({ success: true, message: 'Tabel dan data dummy berhasil diisikan ke Turso!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Seed error: ' + err.message });
+  }
+});
+
+// API Routes
+app.get('/api/kpi', async (req, res) => {
+  try {
+    const bookings = await db.execute("SELECT COUNT(*) as total FROM bookings");
+    const lowStock = await db.execute("SELECT COUNT(*) as total FROM inventory WHERE stock <= min_stock");
+    res.json({
+      todayBookings: Number(bookings.rows[0]?.total || 0),
+      lowStock: Number(lowStock.rows[0]?.total || 0)
+    });
+  } catch (err) {
+    res.json({ todayBookings: 0, lowStock: 0 });
+  }
+});
+
+app.get('/api/bookings', async (req, res) => {
+  try {
+    const result = await db.execute("SELECT * FROM bookings ORDER BY id DESC");
+    res.json(result.rows);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+app.post('/api/bookings', async (req, res) => {
+  try {
+    await createTables();
+    const { customer_name, pet_name, pet_type, service_type, booking_date, booking_time } = req.body;
+    await db.execute({
+      sql: `INSERT INTO bookings (customer_name, pet_name, pet_type, service_type, booking_date, booking_time) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [customer_name, pet_name, pet_type, service_type, booking_date, booking_time]
+    });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// API Routes Utama
-app.get('/api/kpi', async (req, res) => {
-  const bookings = await db.execute("SELECT COUNT(*) as total FROM bookings");
-  const lowStock = await db.execute("SELECT COUNT(*) as total FROM inventory WHERE stock <= min_stock");
-  res.json({
-    todayBookings: Number(bookings.rows[0]?.total || 0),
-    lowStock: Number(lowStock.rows[0]?.total || 0)
-  });
-});
-
-app.get('/api/bookings', async (req, res) => {
-  const result = await db.execute("SELECT * FROM bookings ORDER BY id DESC");
-  res.json(result.rows);
-});
-
-app.post('/api/bookings', async (req, res) => {
-  const { customer_name, pet_name, pet_type, service_type, booking_date, booking_time } = req.body;
-  await db.execute({
-    sql: `INSERT INTO bookings (customer_name, pet_name, pet_type, service_type, booking_date, booking_time) VALUES (?, ?, ?, ?, ?, ?)`,
-    args: [customer_name, pet_name, pet_type, service_type, booking_date, booking_time]
-  });
-  res.json({ success: true });
-});
-
 app.get('/api/inventory', async (req, res) => {
-  const result = await db.execute("SELECT * FROM inventory ORDER BY name ASC");
-  res.json(result.rows);
+  try {
+    const result = await db.execute("SELECT * FROM inventory ORDER BY name ASC");
+    res.json(result.rows);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
 app.post('/api/inventory', async (req, res) => {
-  const { name, category, price, stock, min_stock, image_url } = req.body;
-  await db.execute({
-    sql: `INSERT INTO inventory (name, category, price, stock, min_stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`,
-    args: [name, category, price, stock, min_stock || 5, image_url || 'https://via.placeholder.com/100']
-  });
-  res.json({ success: true });
+  try {
+    await createTables();
+    const { name, category, price, stock, min_stock, image_url } = req.body;
+    await db.execute({
+      sql: `INSERT INTO inventory (name, category, price, stock, min_stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [name, category, price, stock, min_stock || 5, image_url || 'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=300']
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/pets', async (req, res) => {
-  const result = await db.execute("SELECT * FROM pets ORDER BY id DESC");
-  res.json(result.rows);
+  try {
+    const result = await db.execute("SELECT * FROM pets ORDER BY id DESC");
+    res.json(result.rows);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
 app.post('/api/pets', async (req, res) => {
-  const { name, type, breed, owner_name, owner_phone } = req.body;
-  await db.execute({
-    sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, '-')`,
-    args: [name, type, breed, owner_name, owner_phone]
-  });
-  res.json({ success: true });
+  try {
+    await createTables();
+    const { name, type, breed, owner_name, owner_phone } = req.body;
+    await db.execute({
+      sql: `INSERT INTO pets (name, type, breed, owner_name, owner_phone, medical_history) VALUES (?, ?, ?, ?, ?, '-')`,
+      args: [name, type, breed, owner_name, owner_phone]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = app;
